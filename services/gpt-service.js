@@ -4,81 +4,75 @@ const EventEmitter = require('events');
 const OpenAI = require('openai');
 
 class GptService extends EventEmitter {
- // Set up the AI assistant with its initial personality and knowledge
- constructor() {
-   super();
-   this.openai = new OpenAI();
-   this.userContext = [
-     // Initial instructions and info for the AI
-     { 'role': 'system', 'content': `You are a helpful assistant for Bart's Automotive. 
-       Keep your responses brief but friendly. Don't ask more than 1 question at a time. 
-       If asked about services not listed below, politely explain we don't offer that service but can refer them to another shop.
-       Key Information:
-       - Hours: Monday to Friday 9 AM to 5 PM
-       - Address: 123 Little Collins Street, Melbourne
-       - Services: Car service, brake repairs, transmission work, towing, and general repairs
-       You must add a '•' symbol every 5 to 10 words at natural pauses where your response can be split for text to speech.` 
-     },
-     // Welcome message
-     { 'role': 'assistant', 'content': 'Welcome to Bart\'s Automotive. • How can I help you today?' },
-   ],
-   this.partialResponseIndex = 0;    // Tracks pieces of response for order
- }
+  // Set up the AI assistant with its initial personality and knowledge
+  constructor() {
+    super();
+    this.openai = new OpenAI();
+    this.userContext = [
+      // Initial instructions and info for the AI
+      {
+        'role': 'system', 'content': `Eres un asistente útil para el negocio de prueba de Tomas y Regina. • Mantén tus respuestas breves pero amigables. No hagas más de 1 pregunta a la vez. • Si te preguntan sobre servicios que no están listados abajo, explica amablemente que no ofrecemos ese servicio. Información clave: • Horario: lunes a viernes de 9 AM a 5 PM • Dirección: 123 Calle Argentina Griega, Madrid • Servicios: servicio de diseño web, asesoramiento web, creación y mantenimiento de software a medida, paginas web en general`
+      },
+      // Welcome message
+      { 'role': 'assistant', 'content': 'Bienvenido al negocio de prueba de Tomas y Regina • ¿Cómo te puedo ayudar?' },
+    ],
+      this.partialResponseIndex = 0;    // Tracks pieces of response for order
+  }
 
- // Store the call's unique ID
- setCallSid(callSid) {
-   this.userContext.push({ 'role': 'system', 'content': `callSid: ${callSid}` });
- }
+  // Store the call's unique ID
+  setCallSid(callSid) {
+    this.userContext.push({ 'role': 'system', 'content': `callSid: ${callSid}` });
+  }
 
- // Add new messages to conversation history
- updateUserContext(name, role, text) {
-   if (name !== 'user') {
-     this.userContext.push({ 'role': role, 'name': name, 'content': text });
-   } else {
-     this.userContext.push({ 'role': role, 'content': text });
-   }
- }
+  // Add new messages to conversation history
+  updateUserContext(name, role, text) {
+    if (name !== 'user') {
+      this.userContext.push({ 'role': role, 'name': name, 'content': text });
+    } else {
+      this.userContext.push({ 'role': role, 'content': text });
+    }
+  }
 
- // Main function that handles getting responses from GPT
- async completion(text, interactionCount, role = 'user', name = 'user') {
-   // Add user's message to conversation history
-   this.updateUserContext(name, role, text);
+  // Main function that handles getting responses from GPT
+  async completion(text, interactionCount, role = 'user', name = 'user') {
+    // Add user's message to conversation history
+    this.updateUserContext(name, role, text);
 
-   // Get streaming response from GPT
-   const stream = await this.openai.chat.completions.create({
-     model: 'chatgpt-4o-latest',
-     messages: this.userContext,
-     stream: true,
-   });
+    // Get streaming response from GPT
+    const stream = await this.openai.chat.completions.create({
+      model: 'chatgpt-4o-latest',
+      messages: this.userContext,
+      stream: true,
+    });
 
-   // Track both complete response and chunks for speaking
-   let completeResponse = '';
-   let partialResponse = '';
+    // Track both complete response and chunks for speaking
+    let completeResponse = '';
+    let partialResponse = '';
 
-   // Process each piece of GPT's response as it comes
-   for await (const chunk of stream) {
-     let content = chunk.choices[0]?.delta?.content || '';
-     let finishReason = chunk.choices[0].finish_reason;
+    // Process each piece of GPT's response as it comes
+    for await (const chunk of stream) {
+      let content = chunk.choices[0]?.delta?.content || '';
+      let finishReason = chunk.choices[0].finish_reason;
 
-     completeResponse += content;
-     partialResponse += content;
+      completeResponse += content;
+      partialResponse += content;
 
-     // When we hit a pause marker (•) or the end, send that chunk for speech
-     if (content.trim().slice(-1) === '•' || finishReason === 'stop') {
-       const gptReply = { 
-         partialResponseIndex: this.partialResponseIndex,
-         partialResponse
-       };
-       this.emit('gptreply', gptReply, interactionCount);
-       this.partialResponseIndex++;
-       partialResponse = '';
-     }
-   }
+      // When we hit a pause marker (•) or the end, send that chunk for speech
+      if (content.trim().slice(-1) === '•' || finishReason === 'stop') {
+        const gptReply = {
+          partialResponseIndex: this.partialResponseIndex,
+          partialResponse
+        };
+        this.emit('gptreply', gptReply, interactionCount);
+        this.partialResponseIndex++;
+        partialResponse = '';
+      }
+    }
 
-   // Add GPT's complete response to conversation history
-   this.userContext.push({'role': 'assistant', 'content': completeResponse});
-   console.log(`GPT -> user context length: ${this.userContext.length}`.green);
- }
+    // Add GPT's complete response to conversation history
+    this.userContext.push({ 'role': 'assistant', 'content': completeResponse });
+    console.log(`GPT -> user context length: ${this.userContext.length}`.green);
+  }
 }
 
 module.exports = { GptService };
