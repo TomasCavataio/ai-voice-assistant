@@ -87,9 +87,8 @@ app.ws('/connection', (ws) => {
 
     // Process transcribed text through GPT
     transcriptionService.on('transcription', async (text) => {
-      if (!text) { return; }
       console.log(`Interaction ${interactionCount} – STT -> GPT: ${text}`.yellow);
-      gptService.completion(text, interactionCount);
+      gptService.completion(text, interactionCount); // Sin pasar 'user' o 'name'
       interactionCount += 1;
     });
 
