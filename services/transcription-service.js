@@ -14,59 +14,55 @@ const logger = {
 class TranscriptionService extends EventEmitter {
   constructor() {
     super();
-    // Set up connection to Deepgram with API key
     const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
 
-    // Configure live transcription settings
     this.dgConnection = deepgram.listen.live({
-      encoding: 'mulaw',             // Audio encoding type
-      sample_rate: '8000',           // Phone call quality
-      model: 'nova-2',               // Deepgram model to use
-      punctuate: true,               // Add punctuation
-      interim_results: true,         // Get partial results
-      endpointing: 200,              // Detect speech endings
-      utterance_end_ms: 1000,         // Wait time for utterance end
-      language: 'es'            // Language for transcription
+      encoding: 'mulaw',
+      sample_rate: '8000',
+      model: 'nova-2',
+      punctuate: true,
+      interim_results: true,
+      endpointing: 200,
+      utterance_end_ms: 1000, // No podemos bajarlo más
+      language: 'es'
     });
 
-    this.finalResult = '';           // Store complete transcription
-    this.speechFinal = false;        // Track if speaker has finished naturally
+    this.finalResult = '';
+    this.transcriptionTimeout = null;
 
-    // When connection opens, set up all event handlers
-    this.dgConnection.on(LiveTranscriptionEvents.Transcript, (transcriptionEvent) => {
+    this.dgConnection.on(LiveTranscriptionEvents.Transcript, (event) => {
       try {
-        // Limpiar cualquier timeout pendiente
-        if (this.transcriptionTimeout) {
-          clearTimeout(this.transcriptionTimeout);
-        }
+        const text = event.channel?.alternatives?.[0]?.transcript?.trim() || '';
+        const isFinal = event.is_final === true;
+        const isSpeechFinal = event.speech_final === true;
 
-        const alternatives = transcriptionEvent.channel?.alternatives;
-        let text = alternatives?.[0]?.transcript || '';
+        if (this.transcriptionTimeout) clearTimeout(this.transcriptionTimeout);
 
-        // Si es una transcripción final y hay texto
-        if (transcriptionEvent.is_final === true && text.trim().length > 0) {
+        if (isFinal && text) {
           this.finalResult += ` ${text}`;
 
-          // Si el hablante hizo una pausa natural
-          if (transcriptionEvent.speech_final === true) {
-            this.speechFinal = true;
+          if (isSpeechFinal) {
             this.emit('transcription', this.finalResult.trim());
             this.finalResult = '';
           } else {
-            this.speechFinal = false;
-
-            // Configurar un timeout de seguridad (3 segundos)
+            // Seguridad: no esperamos 3s, bajamos a 500ms
             this.transcriptionTimeout = setTimeout(() => {
-              if (this.finalResult.trim().length > 0) {
-                logger.warn('Timeout de transcripción activado, enviando resultado parcial');
+              if (this.finalResult.trim()) {
+                logger.warn('Timeout rápido activado, enviando transcripción acumulada.');
                 this.emit('transcription', this.finalResult.trim());
                 this.finalResult = '';
               }
-            }, 3000);
+            }, 500);
           }
-        } else if (text.trim().length > 0) {
-          // Emitir resultados interinos para retroalimentación en tiempo real
+        } else if (text) {
+          // Emitir interino si parece una frase usable
           this.emit('utterance', text);
+
+          // Si parece una frase entera, podemos incluso emitir de forma optimista
+          if (pareceFraseCompleta(text)) {
+            logger.debug('Frase interina parece completa, se emite tempranamente.');
+            this.emit('transcription', text);
+          }
         }
       } catch (err) {
         logger.error(`Error procesando transcripción: ${err.message}`);
@@ -74,12 +70,16 @@ class TranscriptionService extends EventEmitter {
     });
   }
 
-  // Send audio data to Deepgram for transcription
   send(payload) {
-    if (this.dgConnection.getReadyState() === 1) {  // Check if connection is open
+    if (this.dgConnection.getReadyState() === 1) {
       this.dgConnection.send(Buffer.from(payload, 'base64'));
     }
   }
+}
+
+// Heurística básica para detectar si una frase interina ya es válida
+function pareceFraseCompleta(text) {
+  return text.length > 20 && /[.?!]$/.test(text.trim());
 }
 
 module.exports = { TranscriptionService };
