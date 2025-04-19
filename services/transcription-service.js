@@ -25,7 +25,7 @@ class TranscriptionService extends EventEmitter {
       punctuate: true,               // Add punctuation
       interim_results: true,         // Get partial results
       endpointing: 200,              // Detect speech endings
-      utterance_end_ms: 1000,         // Wait time for utterance end
+      utterance_end_ms: 500,         // Wait time for utterance end
       language: 'es'            // Language for transcription
     });
 
