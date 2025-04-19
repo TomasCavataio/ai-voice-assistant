@@ -1,73 +1,83 @@
-// Handles events and unique IDs for audio streaming
 const EventEmitter = require('events');
 const uuid = require('uuid');
 
 class StreamService extends EventEmitter {
- // Initialize websocket connection and audio tracking
- constructor(websocket) {
-   super();
-   this.ws = websocket;
-   this.expectedAudioIndex = 0;    // Tracks which audio piece should play next
-   this.audioBuffer = {};          // Stores audio pieces that arrive out of order
-   this.streamSid = '';           // Unique ID for this call's media stream
- }
+  constructor(websocket) {
+    super();
+    this.ws = websocket;
+    this.expectedAudioIndex = 0;
+    this.audioBuffer = new Map(); // Usar Map para mejor performance
+    this.streamSid = '';
+    this.isSending = false; // Control de flujo
+    this.pendingQueue = []; // Cola de audio
+  }
 
- setStreamSid (streamSid) {
-   this.streamSid = streamSid;
- }
+  setStreamSid(streamSid) {
+    this.streamSid = streamSid;
+  }
 
- // Manages the order of audio playback
- buffer (index, audio) {
-   // Welcome message has no index, play immediately
-   if(index === null) {
-     this.sendAudio(audio);
-   } 
-   // If this is the next expected piece, play it and check for more
-   else if(index === this.expectedAudioIndex) {
-     this.sendAudio(audio);
-     this.expectedAudioIndex++;
+  buffer(index, audio) {
+    if (index === null) {
+      this.sendAudioWithBackpressure(audio);
+    } else if (index === this.expectedAudioIndex) {
+      this.processAudioChunk(audio);
+    } else {
+      this.audioBuffer.set(index, audio);
+    }
+  }
 
-     // Play any stored pieces that are now ready in sequence
-     while(Object.prototype.hasOwnProperty.call(this.audioBuffer, this.expectedAudioIndex)) {
-       const bufferedAudio = this.audioBuffer[this.expectedAudioIndex];
-       this.sendAudio(bufferedAudio);
-       this.expectedAudioIndex++;
-     }
-   } 
-   // Store future pieces until their turn
-   else {
-     this.audioBuffer[index] = audio;
-   }
- }
+  async processAudioChunk(audio) {
+    this.pendingQueue.push(audio);
+    if (!this.isSending) {
+      this.isSending = true;
+      while (this.pendingQueue.length > 0) {
+        const chunk = this.pendingQueue.shift();
+        await this.sendAudioWithBackpressure(chunk);
+        this.expectedAudioIndex++;
+        this.checkBufferedChunks();
+      }
+      this.isSending = false;
+    }
+  }
 
- // Actually sends audio to the caller through websocket
- sendAudio (audio) {
-   // Send the audio data
-   this.ws.send(
-     JSON.stringify({
-       streamSid: this.streamSid,
-       event: 'media',
-       media: {
-         payload: audio,
-       },
-     })
-   );
+  checkBufferedChunks() {
+    while (this.audioBuffer.has(this.expectedAudioIndex)) {
+      const bufferedAudio = this.audioBuffer.get(this.expectedAudioIndex);
+      this.pendingQueue.push(bufferedAudio);
+      this.audioBuffer.delete(this.expectedAudioIndex);
+    }
+  }
 
-   // Create and send a unique marker to track when audio finishes playing
-   const markLabel = uuid.v4();
-   this.ws.send(
-     JSON.stringify({
-       streamSid: this.streamSid,
-       event: 'mark',
-       mark: {
-         name: markLabel
-       }
-     })
-   );
+  async sendAudioWithBackpressure(audio) {
+    return new Promise((resolve) => {
+      this.ws.send(JSON.stringify({
+        streamSid: this.streamSid,
+        event: 'media',
+        media: { payload: audio }
+      }), (err) => {
+        if (err) {
+          console.error('Error enviando audio:', err);
+          this.emit('error', err);
+        }
+        this.sendMark();
+        resolve();
+      });
+    });
+  }
 
-   // Let other parts of the system know audio was sent
-   this.emit('audiosent', markLabel);
- }
+  sendMark() {
+    const markLabel = uuid.v4();
+    setTimeout(() => { // Esperar 50ms para sincronización con Twilio
+      this.ws.send(JSON.stringify({
+        streamSid: this.streamSid,
+        event: 'mark',
+        mark: { name: markLabel }
+      }), (err) => {
+        if (err) console.error('Error enviando mark:', err);
+      });
+      this.emit('audiosent', markLabel);
+    }, 50);
+  }
 }
 
-module.exports = {StreamService};
+module.exports = { StreamService };

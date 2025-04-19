@@ -31,30 +31,42 @@ app.post('/incoming', (req, res) => {
 // Handle WebSocket connection for the call's audio
 app.ws('/connection', (ws) => {
   try {
-    ws.on('error', console.error);
-
-    // Variables to track the call and its audio
     let streamSid;
     let callSid;
     const gptService = new GptService();
-    const streamService = new StreamService(ws);
+    const streamService = new StreamService(ws, {
+      maxBufferSize: 5,       // ← Nuevo parámetro
+      highWaterMark: 3        // ← Control de backpressure
+    });
     const transcriptionService = new TranscriptionService();
-    const ttsService = new TextToSpeechService({});
-    let marks = [];              // Track audio completion markers
-    let interactionCount = 0;    // Count back-and-forth exchanges
+    const ttsService = new TextToSpeechService();
+    let marks = [];
+    let interactionCount = 0;
 
-    // Handle incoming messages from Twilio
+    // Manejar cierre de conexión
+    ws.on('close', () => {
+      console.log(`Conexión cerrada para ${streamSid}`.red);
+      transcriptionService.dgConnection.finish(); // ← Cierre seguro de Deepgram
+      streamService.pendingQueue = [];            // ← Limpiar buffer
+    });
+
+    // En el evento 'start'
     ws.on('message', function message(data) {
       const msg = JSON.parse(data);
 
       if (msg.event === 'start') {
-        // Call started - set up IDs and send welcome message
         streamSid = msg.start.streamSid;
         callSid = msg.start.callSid;
         streamService.setStreamSid(streamSid);
         gptService.setCallSid(callSid);
-        console.log(`Twilio -> Starting Media Stream for ${streamSid}`.underline.red);
-        ttsService.generate({ partialResponseIndex: null, partialResponse: 'Bienvenido al negocio de prueba de Tomas y Regina • Como te puedo ayudar?' }, 0);
+
+        // Retrasar mensaje inicial para estabilidad
+        setTimeout(() => {
+          ttsService.generate({
+            partialResponseIndex: null,
+            partialResponse: 'Bienvenido al negocio de prueba de Tomás y Regina. ¿Cómo le puedo ayudar?'
+          }, 0);
+        }, 200); // ← 200ms para estabilizar conexión
       }
       else if (msg.event === 'media') {
         // Received audio from caller - send to transcription
@@ -67,7 +79,7 @@ app.ws('/connection', (ws) => {
         marks = marks.filter(m => m !== msg.mark.name);
       }
       else if (msg.event === 'stop') {
-        // Call ended
+        marks = []; // ← Limpiar marcas al finalizar
         console.log(`Twilio -> Media stream ${streamSid} ended.`.underline.red);
       }
     });
@@ -106,10 +118,13 @@ app.ws('/connection', (ws) => {
 
     // Track when audio pieces are sent
     streamService.on('audiosent', (markLabel) => {
+      console.log(`Audio enviado: ${markLabel.slice(0, 8)}...`.dim);
       marks.push(markLabel);
     });
+
   } catch (err) {
-    console.log(err);
+    console.error('Error crítico en WebSocket:', err);
+    ws.close(); // ← Cierre forzoso ante errores graves
   }
 });
 

@@ -5,7 +5,7 @@ const EventEmitter = require('events');
 class TextToSpeechService extends EventEmitter {
   constructor() {
     super();
-    const tts = new ElevenLabs({
+    this.tts = new ElevenLabs({
       apiKey: process.env.ELEVEN_LABS_KEY,
       voiceId: 'EXAVITQu4vr4xnSDxMaL',
       modelId: 'eleven_multilingual_v2'
@@ -16,35 +16,18 @@ class TextToSpeechService extends EventEmitter {
     const { partialResponse } = gptReply;
 
     try {
-      // 1. Validar y normalizar texto
       const cleanText = this.normalizeText(partialResponse);
 
-      // 2. Configuración avanzada para español
-      const audioBuffer = await this.eleven.generate({
-        text: cleanText,
+      const audioBuffer = await this.tts.textToSpeech({
+        textInput: cleanText,
+        voiceId: 'EXAVITQu4vr4xnSDxMaL',
         voiceSettings: {
-          stability: 0.35, // Más variación emocional
-          similarity_boost: 0.92, // Mayor claridad
-          style: 0.15, // Entonación conversacional
-          use_speaker_boost: true
-        },
-        model: {
-          model_id: 'eleven_turbo_v2', // Modelo rápido para respuestas en tiempo real
-          custom_pronunciations: {
-            'Tomas': 'TO-mas', // Corrección de pronunciación
-            'Regina': 're-HEE-na'
-          }
-        },
-        audioConfig: {
-          encoding: 'MULAW', // Formato requerido por Twilio
-          sampleRate: 8000, // 8kHz para llamadas telefónicas
-          speed: 0.95 // Velocidad ligeramente reducida
+          stability: 0.35,
+          similarity_boost: 0.92
         }
       });
 
-      // 3. Codificación compatible con WebSocket
       const base64String = Buffer.from(audioBuffer).toString('base64');
-
       this.emit('speech', null, base64String, cleanText, interactionCount);
 
     } catch (error) {
@@ -53,11 +36,10 @@ class TextToSpeechService extends EventEmitter {
   }
 
   normalizeText(text) {
-    // Convertir números y abreviaturas a palabras
     return text
       .replace(/(\d+)/g, match => new Intl.NumberFormat('es-ES').format(match))
-      .replace(/•/g, ', ') // Reemplazar bullets por pausas
-      .replace(/\.{2,}/g, ', '); // Elipsis a pausas normales
+      .replace(/•/g, ', ')
+      .replace(/\.{2,}/g, ', ');
   }
 
 }
