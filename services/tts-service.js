@@ -20,19 +20,23 @@ class TextToSpeechService extends EventEmitter {
       // Normalizar texto
       const cleanText = this.normalizeText(gptReply.partialResponse);
 
-      // Generar audio en formato correcto para Twilio
-      const audio = await this.client.generate({
+      // Generar audio en formato compatible con Twilio
+      const audioStream = await this.client.generate({
         voice: this.voiceId,
         text: cleanText,
         model_id: "eleven_multilingual_v2",
+        output_format: 'ulaw_8000', // Codec específico para Twilio
         voice_settings: {
           stability: 0.35,
           similarity_boost: 0.92
         }
       });
 
-      // Convertir a formato compatible con Twilio (MULAW 8kHz)
-      const base64String = Buffer.from(audio).toString('base64');
+      // Convertir ReadableStream a Buffer
+      const audioBuffer = await this.streamToBuffer(audioStream);
+
+      // Codificar en base64
+      const base64String = audioBuffer.toString('base64');
 
       this.emit('speech', null, base64String, cleanText, interactionCount);
 
@@ -40,6 +44,16 @@ class TextToSpeechService extends EventEmitter {
       console.error(`Error ElevenLabs: ${error.message}`.red);
       this.emit('speech', null, '', 'Error de audio', interactionCount);
     }
+  }
+
+  // Función para convertir stream a Buffer
+  streamToBuffer(stream) {
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      stream.on('data', (chunk) => chunks.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    });
   }
 
   normalizeText(text) {
