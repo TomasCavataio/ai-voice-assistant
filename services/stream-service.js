@@ -74,13 +74,10 @@ class StreamService extends EventEmitter {
         let audioPayload = Buffer.isBuffer(audio) ? audio.toString('base64') : audio;
 
         this.ws.send(JSON.stringify({
-          streamSid: this.streamSid,
           event: 'media',
+          streamSid: this.streamSid,
           media: {
-            payload: audioPayload,
-            codec: 'audio/x-mulaw',
-            sampleRate: 8000,
-            contentType: 'audio/x-mulaw'
+            payload: audioPayload
           }
         }), (err) => {
           if (err) {

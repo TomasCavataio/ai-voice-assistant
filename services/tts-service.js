@@ -88,12 +88,55 @@ class TextToSpeechService extends EventEmitter {
     }
   }
 
-  async streamToBuffer(response) {
+  // Función para convertir stream a Buffer - versión actualizada
+  async streamToBuffer(stream) {
     try {
-      return Buffer.from(response.data);
+      // Verificar qué tipo de objeto es stream
+      logger.debug(`Tipo de respuesta de ElevenLabs: ${typeof stream}`);
+
+      // Si es un ReadableStream de fetch API (uso moderno)
+      if (typeof stream.getReader === 'function') {
+        const reader = stream.getReader();
+        const chunks = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+
+        return Buffer.concat(chunks);
+      }
+      // Si es un objeto con array/buffer directamente
+      else if (stream.buffer || stream.data || stream.audio) {
+        const data = stream.buffer || stream.data || stream.audio;
+        return Buffer.from(data);
+      }
+      // Si es una respuesta con arrayBuffer() (Fetch API)
+      else if (typeof stream.arrayBuffer === 'function') {
+        const arrayBuffer = await stream.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      }
+      // Si es un buffer directamente
+      else if (Buffer.isBuffer(stream)) {
+        return stream;
+      }
+      // Si es un string (ya codificado en base64 u otro formato)
+      else if (typeof stream === 'string') {
+        return Buffer.from(stream);
+      }
+      // Último recurso - intentar convertir objeto a string JSON y luego a buffer
+      else {
+        logger.warn(`Tipo de respuesta desconocido de ElevenLabs: ${typeof stream}`);
+        try {
+          return Buffer.from(JSON.stringify(stream));
+        } catch (e) {
+          throw new Error(`No se pudo convertir la respuesta a buffer: ${e.message}`);
+        }
+      }
     } catch (error) {
-      logger.error(`Error convirtiendo a Buffer: ${error.message}`);
-      throw new Error('Formato de audio inválido de ElevenLabs');
+      logger.error(`Error en streamToBuffer: ${error.message}`);
+      throw error;
     }
   }
   normalizeText(text) {
