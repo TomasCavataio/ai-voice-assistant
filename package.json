@@ -13,6 +13,7 @@
     "@deepgram/sdk": "^3.3.4",
     "colors": "^1.4.0",
     "dotenv": "^16.3.1",
+    "elevenlabs-node": "^2.0.3",
     "express": "^4.19.2",
     "express-ws": "^5.0.2",
     "gtts": "^0.2.1",

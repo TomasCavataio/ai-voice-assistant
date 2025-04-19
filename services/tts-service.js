@@ -1,61 +1,63 @@
-// Import required libraries for environment vars, buffer handling and events
-require('dotenv').config();
+const { ElevenLabs } = require('elevenlabs-node');
 const { Buffer } = require('node:buffer');
-const EventEmitter = require('events');
-const fetch = require('node-fetch');
 
-class TextToSpeechService extends EventEmitter {
+export class TextToSpeechService extends EventEmitter {
   constructor() {
     super();
-    this.nextExpectedIndex = 0;      // Track order of speech chunks
-    this.speechBuffer = {};          // Store speech pieces
+    this.eleven = new ElevenLabs({
+      apiKey: process.env.ELEVEN_LABS_KEY,
+      voiceId: 'MF3mGyEYCl7XYWbV9V6O', // Voz "Josh" - Español neutro mejorado
+      modelId: 'eleven_multilingual_v2',
+      latencyOptimization: 4 // Priorizar velocidad para respuestas en tiempo real
+    });
   }
 
-  // Convert text to speech using Deepgram's API
   async generate(gptReply, interactionCount) {
-    const { partialResponseIndex, partialResponse } = gptReply;
-
-    // Skip if no text to convert
-    if (!partialResponse) { return; }
+    const { partialResponse } = gptReply;
 
     try {
-      // Call Deepgram's text-to-speech API
-      const response = await fetch(
-        `https://api.deepgram.com/v1/speak?model=${process.env.VOICE_MODEL}&encoding=mulaw&sample_rate=8000&container=none`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Token ${process.env.DEEPGRAM_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            text: partialResponse,
-          }),
-        }
-      );
+      // 1. Validar y normalizar texto
+      const cleanText = this.normalizeText(partialResponse);
 
-      // Handle successful response
-      if (response.status === 200) {
-        try {
-          // Convert audio response to base64 format
-          const blob = await response.blob();
-          const audioArrayBuffer = await blob.arrayBuffer();
-          const base64String = Buffer.from(audioArrayBuffer).toString('base64');
-
-          // Send audio to be played
-          this.emit('speech', partialResponseIndex, base64String, partialResponse, interactionCount);
-        } catch (err) {
-          console.log(err);
+      // 2. Configuración avanzada para español
+      const audioBuffer = await this.eleven.generate({
+        text: cleanText,
+        voiceSettings: {
+          stability: 0.35, // Más variación emocional
+          similarity_boost: 0.92, // Mayor claridad
+          style: 0.15, // Entonación conversacional
+          use_speaker_boost: true
+        },
+        model: {
+          model_id: 'eleven_turbo_v2', // Modelo rápido para respuestas en tiempo real
+          custom_pronunciations: {
+            'Tomas': 'TO-mas', // Corrección de pronunciación
+            'Regina': 're-HEE-na'
+          }
+        },
+        audioConfig: {
+          encoding: 'MULAW', // Formato requerido por Twilio
+          sampleRate: 8000, // 8kHz para llamadas telefónicas
+          speed: 0.95 // Velocidad ligeramente reducida
         }
-      } else {
-        console.log('Deepgram TTS error:');
-        console.log(response);
-      }
-    } catch (err) {
-      console.error('Error occurred in TextToSpeech service');
-      console.error(err);
+      });
+
+      // 3. Codificación compatible con WebSocket
+      const base64String = Buffer.from(audioBuffer).toString('base64');
+
+      this.emit('speech', null, base64String, cleanText, interactionCount);
+
+    } catch (error) {
+      console.error(`Error ElevenLabs: ${error.message}`.red);
     }
   }
-}
 
-module.exports = { TextToSpeechService };
+  normalizeText(text) {
+    // Convertir números y abreviaturas a palabras
+    return text
+      .replace(/(\d+)/g, match => new Intl.NumberFormat('es-ES').format(match))
+      .replace(/•/g, ', ') // Reemplazar bullets por pausas
+      .replace(/\.{2,}/g, ', '); // Elipsis a pausas normales
+  }
+
+}
