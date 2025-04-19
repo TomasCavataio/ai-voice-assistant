@@ -1,15 +1,14 @@
-const { ElevenLabs } = require('elevenlabs-node');
+const ElevenLabs = require("elevenlabs-node");
 const { Buffer } = require('node:buffer');
 const EventEmitter = require('events');
 
 class TextToSpeechService extends EventEmitter {
   constructor() {
     super();
-    this.eleven = new ElevenLabs({
+    const tts = new ElevenLabs({
       apiKey: process.env.ELEVEN_LABS_KEY,
-      voiceId: 'MF3mGyEYCl7XYWbV9V6O', // Voz "Josh" - Español neutro mejorado
-      modelId: 'eleven_multilingual_v2',
-      latencyOptimization: 4 // Priorizar velocidad para respuestas en tiempo real
+      voiceId: 'EXAVITQu4vr4xnSDxMaL',
+      modelId: 'eleven_multilingual_v2'
     });
   }
 
