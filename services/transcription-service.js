@@ -57,8 +57,17 @@ class TranscriptionService extends EventEmitter {
         } else if (text && pareceFraseCompleta(text)) {
           logger.debug('Frase interina parece completa, se emite tempranamente.');
           this.emit('transcription', text);
+        } else if (text && !this.finalResult && isFinal === false) {
+          // Intento agresivo de emitir texto temprano sin esperar is_final
+          logger.debug('Emitiendo transcripción temprana con heurística de texto parcial.');
+          this.finalResult = text;
+          setTimeout(() => {
+            if (this.finalResult) {
+              this.emit('transcription', this.finalResult.trim());
+              this.finalResult = '';
+            }
+          }, 300); // tiempo muy corto para no bloquear el flujo
         } else {
-          // Emitir interino de forma más frecuente
           this.transcriptionTimeout = setTimeout(() => {
             if (this.finalResult.trim()) {
               logger.warn('Timeout rápido activado, enviando transcripción acumulada.');
@@ -82,7 +91,8 @@ class TranscriptionService extends EventEmitter {
 
 // Heurística básica para detectar si una frase interina ya es válida
 function pareceFraseCompleta(text) {
-  return text.length > 20 && /[.?!]$/.test(text.trim());
+  return text.length > 10 && /[.?!,;:]$/.test(text.trim());
 }
+
 
 module.exports = { TranscriptionService };
