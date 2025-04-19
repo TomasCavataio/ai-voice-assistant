@@ -1,7 +1,7 @@
 const { ElevenLabs } = require('elevenlabs-node');
 const { Buffer } = require('node:buffer');
 
-export class TextToSpeechService extends EventEmitter {
+class TextToSpeechService extends EventEmitter {
   constructor() {
     super();
     this.eleven = new ElevenLabs({
@@ -61,3 +61,5 @@ export class TextToSpeechService extends EventEmitter {
   }
 
 }
+
+module.exports = { TextToSpeechService };
