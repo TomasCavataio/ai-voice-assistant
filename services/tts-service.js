@@ -47,6 +47,14 @@ class TextToSpeechService extends EventEmitter {
           stability: 0.35,
           similarity_boost: 0.92
         }
+      }, {
+        // Parámetros adicionales en el headers
+        headers: {
+          'xi-api-key': process.env.ELEVEN_LABS_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/x-mulaw' // Forzar codec correcto
+        },
+        responseType: 'arraybuffer' // Recibir datos binarios directamente
       });
 
       // Registrar información sobre la respuesta

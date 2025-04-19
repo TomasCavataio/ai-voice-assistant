@@ -79,7 +79,8 @@ class StreamService extends EventEmitter {
           media: {
             payload: audioPayload,
             codec: 'audio/x-mulaw',
-            sampleRate: 8000
+            sampleRate: 8000,
+            contentType: 'audio/x-mulaw'
           }
         }), (err) => {
           if (err) {
