@@ -7,7 +7,10 @@ class GptService extends EventEmitter {
   // Set up the AI assistant with its initial personality and knowledge
   constructor() {
     super();
-    this.openai = new OpenAI();
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: "https://api.perplexity.ai"
+    });
     this.userContext = [
       // Initial instructions and info for the AI
       {
@@ -40,10 +43,11 @@ class GptService extends EventEmitter {
 
     // Get streaming response from GPT
     const stream = await this.openai.chat.completions.create({
-      model: 'chatgpt-4o-latest',
+      model: 'sonar-pro', // O cualquier modelo soportado por Perplexity
       messages: this.userContext,
       stream: true,
     });
+
 
     // Track both complete response and chunks for speaking
     let completeResponse = '';
