@@ -51,11 +51,31 @@ app.ws('/connection', (ws) => {
     let marks = [];
     let interactionCount = 0;
 
-    // Manejar cierre de conexión
+    let heartbeatInterval;
+
+    ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+      logger.debug('Heartbeat recibido del cliente');
+    });
+
+    heartbeatInterval = setInterval(() => {
+      if (ws.isAlive === false) {
+        logger.warn('Cliente inactivo, cerrando conexión');
+        return ws.terminate();
+      }
+
+      ws.isAlive = false;
+      ws.ping();
+    }, 30000);
+
     ws.on('close', () => {
-      console.log(`Conexión cerrada para ${streamSid}`.red);
-      transcriptionService.dgConnection.finish(); // ← Cierre seguro de Deepgram
-      streamService.pendingQueue = [];            // ← Limpiar buffer
+      clearInterval(heartbeatInterval);
+      logger.info(`Conexión cerrada para ${streamSid}`);
+      if (transcriptionService.dgConnection) {
+        transcriptionService.dgConnection.finish();
+      }
+      streamService.pendingQueue = [];
     });
 
     // En el evento 'start'
