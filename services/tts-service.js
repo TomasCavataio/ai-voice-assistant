@@ -19,12 +19,10 @@ class TextToSpeechService extends EventEmitter {
       const cleanText = this.normalizeText(partialResponse);
 
       const audioBuffer = await this.tts.textToSpeech({
+        fileName: `audio_${Date.now()}.mp3`, // Nombre único para cada archivo
         textInput: cleanText,
         voiceId: 'EXAVITQu4vr4xnSDxMaL',
-        voiceSettings: {
-          stability: 0.35,
-          similarity_boost: 0.92
-        }
+        voiceSettings: { stability: 0.35, similarity_boost: 0.92 }
       });
 
       const base64String = Buffer.from(audioBuffer).toString('base64');

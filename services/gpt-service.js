@@ -43,6 +43,10 @@ class GptService extends EventEmitter {
 
   // Main function that handles getting responses from GPT
   async completion(text, interactionCount, role = 'user', name = 'user') {
+    if (!text || typeof text !== 'string') {
+      console.error('Texto inválido para GPT'.red);
+      return;
+    }
     // Add user's message to conversation history
     this.updateUserContext(text); // Ahora solo necesita el texto
 
