@@ -1,5 +1,6 @@
 const { ElevenLabs } = require('elevenlabs-node');
 const { Buffer } = require('node:buffer');
+const EventEmitter = require('events');
 
 class TextToSpeechService extends EventEmitter {
   constructor() {
