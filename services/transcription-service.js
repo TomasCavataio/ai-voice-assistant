@@ -26,65 +26,44 @@ class TranscriptionService extends EventEmitter {
     this.speechFinal = false;        // Track if speaker has finished naturally
 
     // When connection opens, set up all event handlers
-    this.dgConnection.on(LiveTranscriptionEvents.Open, () => {
-      // Handle incoming transcription chunks
-      this.dgConnection.on(LiveTranscriptionEvents.Transcript, (transcriptionEvent) => {
+    this.dgConnection.on(LiveTranscriptionEvents.Transcript, (transcriptionEvent) => {
+      try {
+        // Limpiar cualquier timeout pendiente
+        if (this.transcriptionTimeout) {
+          clearTimeout(this.transcriptionTimeout);
+        }
+
         const alternatives = transcriptionEvent.channel?.alternatives;
-        let text = '';
-        if (alternatives) {
-          text = alternatives[0]?.transcript;
-        }
+        let text = alternatives?.[0]?.transcript || '';
 
-        // Handle end of utterance (speaker stopped talking)
-        if (transcriptionEvent.type === 'UtteranceEnd') {
-          if (!this.speechFinal) {
-            console.log(`UtteranceEnd received before speechFinal, emit the text collected so far: ${this.finalResult}`.yellow);
-            this.emit('transcription', this.finalResult);
-            return;
-          } else {
-            console.log('STT -> Speech was already final when UtteranceEnd recevied'.yellow);
-            return;
-          }
-        }
-
-        // Handle final transcription pieces
+        // Si es una transcripción final y hay texto
         if (transcriptionEvent.is_final === true && text.trim().length > 0) {
           this.finalResult += ` ${text}`;
 
-          // If speaker made a natural pause, send the transcription
+          // Si el hablante hizo una pausa natural
           if (transcriptionEvent.speech_final === true) {
-            this.speechFinal = true;  // Prevent duplicate sends
-            this.emit('transcription', this.finalResult);
+            this.speechFinal = true;
+            this.emit('transcription', this.finalResult.trim());
             this.finalResult = '';
           } else {
-            // Reset for next utterance
             this.speechFinal = false;
+
+            // Configurar un timeout de seguridad (3 segundos)
+            this.transcriptionTimeout = setTimeout(() => {
+              if (this.finalResult.trim().length > 0) {
+                logger.warn('Timeout de transcripción activado, enviando resultado parcial');
+                this.emit('transcription', this.finalResult.trim());
+                this.finalResult = '';
+              }
+            }, 3000);
           }
-        } else {
-          // Emit interim results for real-time feedback
+        } else if (text.trim().length > 0) {
+          // Emitir resultados interinos para retroalimentación en tiempo real
           this.emit('utterance', text);
         }
-      });
-
-      // Error handling events
-      this.dgConnection.on(LiveTranscriptionEvents.Error, (error) => {
-        console.error('STT -> deepgram error');
-        console.error(error);
-      });
-
-      this.dgConnection.on(LiveTranscriptionEvents.Warning, (warning) => {
-        console.error('STT -> deepgram warning');
-        console.error(warning);
-      });
-
-      this.dgConnection.on(LiveTranscriptionEvents.Metadata, (metadata) => {
-        console.error('STT -> deepgram metadata');
-        console.error(metadata);
-      });
-
-      this.dgConnection.on(LiveTranscriptionEvents.Close, () => {
-        console.log('STT -> Deepgram connection closed'.yellow);
-      });
+      } catch (err) {
+        logger.error(`Error procesando transcripción: ${err.message}`);
+      }
     });
   }
 

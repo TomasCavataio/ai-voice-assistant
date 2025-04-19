@@ -14,6 +14,14 @@ const app = express();
 ExpressWs(app);
 const PORT = process.env.PORT || 3000;
 
+
+const logger = {
+  info: (msg) => console.log(`[INFO] ${new Date().toISOString()}: ${msg}`.blue),
+  error: (msg) => console.log(`[ERROR] ${new Date().toISOString()}: ${msg}`.red),
+  warn: (msg) => console.log(`[WARN] ${new Date().toISOString()}: ${msg}`.yellow),
+  debug: (msg) => console.log(`[DEBUG] ${new Date().toISOString()}: ${msg}`.dim)
+};
+
 // Handle incoming calls from Twilio
 app.post('/incoming', (req, res) => {
   try {

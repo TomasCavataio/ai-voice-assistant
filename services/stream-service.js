@@ -49,35 +49,42 @@ class StreamService extends EventEmitter {
   }
 
   async sendAudioWithBackpressure(audio) {
-    return new Promise((resolve) => {
-      // Validar tipo de audio y convertirlo a Base64
-      let audioPayload;
-      if (audio instanceof Buffer) {
-        audioPayload = audio.toString('base64');
-      } else if (typeof audio === 'string') {
-        audioPayload = audio;
-      } else {
-        console.error('Formato de audio inválido:', typeof audio);
-        return resolve();
-      }
+    return new Promise((resolve, reject) => {
+      try {
+        // Validación de entrada
+        if (!audio || (!Buffer.isBuffer(audio) && typeof audio !== 'string')) {
+          logger.error('Formato de audio inválido o vacío');
+          return resolve(); // Continuar con el siguiente chunk
+        }
 
-      this.ws.send(JSON.stringify({
-        streamSid: this.streamSid,
-        event: 'media',
-        media: {
-          payload: audioPayload,
-          // Añadir especificaciones de formato para Twilio
-          codec: 'audio/x-mulaw',
-          sampleRate: 8000
+        // Verificar estado de la conexión
+        if (this.ws.readyState !== 1) {
+          logger.error('WebSocket no está abierto, estado: ' + this.ws.readyState);
+          return resolve();
         }
-      }), (err) => {
-        if (err) {
-          console.error('Error enviando audio:'.red, err.message);
-          this.pendingQueue = []; // Limpiar cola ante errores
-        }
-        this.sendMark();
-        resolve();
-      });
+
+        let audioPayload = Buffer.isBuffer(audio) ? audio.toString('base64') : audio;
+
+        this.ws.send(JSON.stringify({
+          streamSid: this.streamSid,
+          event: 'media',
+          media: {
+            payload: audioPayload,
+            codec: 'audio/x-mulaw',
+            sampleRate: 8000
+          }
+        }), (err) => {
+          if (err) {
+            logger.error(`Error al enviar audio: ${err.message}`);
+            return resolve(); // Continuar a pesar del error
+          }
+          this.sendMark();
+          resolve();
+        });
+      } catch (err) {
+        logger.error(`Error crítico en sendAudioWithBackpressure: ${err.message}`);
+        resolve(); // Resolver para no bloquear la cola
+      }
     });
   }
 

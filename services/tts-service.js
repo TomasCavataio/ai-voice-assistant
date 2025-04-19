@@ -17,43 +17,41 @@ class TextToSpeechService extends EventEmitter {
         throw new Error('Texto no recibido para TTS');
       }
 
-      // Normalizar texto
+      // Verificar texto vacío
       const cleanText = this.normalizeText(gptReply.partialResponse);
+      if (!cleanText.trim()) {
+        logger.warn('Texto vacío después de normalización, omitiendo TTS');
+        return;
+      }
 
-      // Generar audio en formato compatible con Twilio
+      logger.info(`Generando audio para texto: ${cleanText.substring(0, 50)}...`);
+
       const audioStream = await this.client.generate({
         voice: this.voiceId,
         text: cleanText,
         model_id: "eleven_multilingual_v2",
-        output_format: 'ulaw_8000', // Codec específico para Twilio
+        output_format: 'ulaw_8000',
         voice_settings: {
           stability: 0.35,
           similarity_boost: 0.92
         }
       });
 
-      // Convertir ReadableStream a Buffer
       const audioBuffer = await this.streamToBuffer(audioStream);
 
-      // Codificar en base64
-      const base64String = audioBuffer.toString('base64');
+      // Verificar tamaño del buffer para asegurar contenido
+      if (!audioBuffer || audioBuffer.length < 100) {
+        logger.warn(`Audio generado demasiado pequeño (${audioBuffer?.length || 0} bytes), posible error`);
+        return;
+      }
 
+      const base64String = audioBuffer.toString('base64');
       this.emit('speech', null, base64String, cleanText, interactionCount);
 
     } catch (error) {
-      console.error(`Error ElevenLabs: ${error.message}`.red);
-      this.emit('speech', null, '', 'Error de audio', interactionCount);
+      logger.error(`Error ElevenLabs: ${error.message}`);
+      // No emitir nada para evitar enviar audio inválido
     }
-  }
-
-  // Función para convertir stream a Buffer
-  streamToBuffer(stream) {
-    return new Promise((resolve, reject) => {
-      const chunks = [];
-      stream.on('data', (chunk) => chunks.push(chunk));
-      stream.on('end', () => resolve(Buffer.concat(chunks)));
-      stream.on('error', reject);
-    });
   }
 
   normalizeText(text) {
