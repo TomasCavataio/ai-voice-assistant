@@ -12,9 +12,10 @@
   "dependencies": {
     "@deepgram/sdk": "^3.3.4",
     "colors": "^1.4.0",
-    "dotenv": "^16.3.1", 
+    "dotenv": "^16.3.1",
     "express": "^4.19.2",
     "express-ws": "^5.0.2",
+    "gtts": "^0.2.1",
     "node-fetch": "^2.7.0",
     "openai": "^4.20.1",
     "twilio": "^4.19.3",
