@@ -4,6 +4,14 @@ const { createClient, LiveTranscriptionEvents } = require('@deepgram/sdk');
 const { Buffer } = require('node:buffer');
 const EventEmitter = require('events');
 
+const logger = {
+  info: (msg) => console.log(`[INFO] ${new Date().toISOString()}: ${msg}`.blue),
+  error: (msg) => console.log(`[ERROR] ${new Date().toISOString()}: ${msg}`.red),
+  warn: (msg) => console.log(`[WARN] ${new Date().toISOString()}: ${msg}`.yellow),
+  debug: (msg) => console.log(`[DEBUG] ${new Date().toISOString()}: ${msg}`.dim)
+};
+
+
 class TranscriptionService extends EventEmitter {
   constructor() {
     super();

@@ -3,6 +3,14 @@ require('colors');
 const EventEmitter = require('events');
 const OpenAI = require('openai');
 
+
+const logger = {
+  info: (msg) => console.log(`[INFO] ${new Date().toISOString()}: ${msg}`.blue),
+  error: (msg) => console.log(`[ERROR] ${new Date().toISOString()}: ${msg}`.red),
+  warn: (msg) => console.log(`[WARN] ${new Date().toISOString()}: ${msg}`.yellow),
+  debug: (msg) => console.log(`[DEBUG] ${new Date().toISOString()}: ${msg}`.dim)
+};
+
 class GptService extends EventEmitter {
   // Set up the AI assistant with its initial personality and knowledge
   constructor() {
