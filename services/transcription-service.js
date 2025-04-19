@@ -22,7 +22,7 @@ class TranscriptionService extends EventEmitter {
       model: 'nova-2',
       punctuate: true,
       interim_results: true,
-      endpointing: 200,
+      endpointing: 150,
       utterance_end_ms: 1000, // No podemos bajarlo más
       language: 'es'
     });
@@ -54,15 +54,18 @@ class TranscriptionService extends EventEmitter {
               }
             }, 500);
           }
-        } else if (text) {
-          // Emitir interino si parece una frase usable
-          this.emit('utterance', text);
-
-          // Si parece una frase entera, podemos incluso emitir de forma optimista
-          if (pareceFraseCompleta(text)) {
-            logger.debug('Frase interina parece completa, se emite tempranamente.');
-            this.emit('transcription', text);
-          }
+        } else if (text && pareceFraseCompleta(text)) {
+          logger.debug('Frase interina parece completa, se emite tempranamente.');
+          this.emit('transcription', text);
+        } else {
+          // Emitir interino de forma más frecuente
+          this.transcriptionTimeout = setTimeout(() => {
+            if (this.finalResult.trim()) {
+              logger.warn('Timeout rápido activado, enviando transcripción acumulada.');
+              this.emit('transcription', this.finalResult.trim());
+              this.finalResult = '';
+            }
+          }, 250);
         }
       } catch (err) {
         logger.error(`Error procesando transcripción: ${err.message}`);
