@@ -1,35 +1,44 @@
-const ElevenLabs = require("elevenlabs-node");
+const { ElevenLabsClient } = require('elevenlabs');
 const { Buffer } = require('node:buffer');
 const EventEmitter = require('events');
 
 class TextToSpeechService extends EventEmitter {
   constructor() {
     super();
-    this.tts = new ElevenLabs({
-      apiKey: process.env.ELEVEN_LABS_KEY,
-      voiceId: 'EXAVITQu4vr4xnSDxMaL',
-      modelId: 'eleven_multilingual_v2'
+    this.client = new ElevenLabsClient({
+      apiKey: process.env.ELEVEN_LABS_KEY
     });
+    this.voiceId = 'EXAVITQu4vr4xnSDxMaL'; // Voz "Bella"
   }
 
   async generate(gptReply, interactionCount) {
-    const { partialResponse } = gptReply;
-
     try {
-      const cleanText = this.normalizeText(partialResponse);
+      if (!gptReply?.partialResponse) {
+        throw new Error('Texto no recibido para TTS');
+      }
 
-      const audioBuffer = await this.tts.textToSpeech({
-        fileName: `audio_${Date.now()}.mp3`, // Nombre único para cada archivo
-        textInput: cleanText,
-        voiceId: 'EXAVITQu4vr4xnSDxMaL',
-        voiceSettings: { stability: 0.35, similarity_boost: 0.92 }
+      // Normalizar texto
+      const cleanText = this.normalizeText(gptReply.partialResponse);
+
+      // Generar audio en formato correcto para Twilio
+      const audio = await this.client.generate({
+        voice: this.voiceId,
+        text: cleanText,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: {
+          stability: 0.35,
+          similarity_boost: 0.92
+        }
       });
 
-      const base64String = Buffer.from(audioBuffer).toString('base64');
+      // Convertir a formato compatible con Twilio (MULAW 8kHz)
+      const base64String = Buffer.from(audio).toString('base64');
+
       this.emit('speech', null, base64String, cleanText, interactionCount);
 
     } catch (error) {
       console.error(`Error ElevenLabs: ${error.message}`.red);
+      this.emit('speech', null, '', 'Error de audio', interactionCount);
     }
   }
 
@@ -39,7 +48,6 @@ class TextToSpeechService extends EventEmitter {
       .replace(/•/g, ', ')
       .replace(/\.{2,}/g, ', ');
   }
-
 }
 
 module.exports = { TextToSpeechService };

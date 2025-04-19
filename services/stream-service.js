@@ -50,14 +50,30 @@ class StreamService extends EventEmitter {
 
   async sendAudioWithBackpressure(audio) {
     return new Promise((resolve) => {
+      // Validar tipo de audio y convertirlo a Base64
+      let audioPayload;
+      if (audio instanceof Buffer) {
+        audioPayload = audio.toString('base64');
+      } else if (typeof audio === 'string') {
+        audioPayload = audio;
+      } else {
+        console.error('Formato de audio inválido:', typeof audio);
+        return resolve();
+      }
+
       this.ws.send(JSON.stringify({
         streamSid: this.streamSid,
         event: 'media',
-        media: { payload: audio }
+        media: {
+          payload: audioPayload,
+          // Añadir especificaciones de formato para Twilio
+          codec: 'audio/x-mulaw',
+          sampleRate: 8000
+        }
       }), (err) => {
         if (err) {
-          console.error('Error enviando audio:', err);
-          this.emit('error', err);
+          console.error('Error enviando audio:'.red, err.message);
+          this.pendingQueue = []; // Limpiar cola ante errores
         }
         this.sendMark();
         resolve();
