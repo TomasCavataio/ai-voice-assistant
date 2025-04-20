@@ -49,7 +49,6 @@ class TextToSpeechService extends EventEmitter {
         }
       }, {
         headers: {
-          'xi-api-key': process.env.ELEVEN_LABS_KEY,
           'Content-Type': 'application/json',
           'Accept': 'audio/x-mulaw'
         },
