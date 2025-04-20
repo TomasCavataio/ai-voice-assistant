@@ -128,7 +128,7 @@ app.ws('/connection', (ws) => {
     // Process transcribed text through GPT
     transcriptionService.on('transcription', async (text) => {
       console.log(`Interaction ${interactionCount} – STT -> GPT: ${text}`.yellow);
-      gptService.completion(text, interactionCount); // Sin pasar 'user' o 'name'
+      gptService.generateResponse(text, interactionCount); // Sin pasar 'user' o 'name'
       interactionCount += 1;
     });
 
@@ -149,6 +149,19 @@ app.ws('/connection', (ws) => {
       console.log(`Audio enviado: ${markLabel.slice(0, 8)}...`.dim);
       marks.push(markLabel);
     });
+
+    gptService.on('gptreply', async (gptReply, icount) => {
+      transcriptionService.pause(); // ← Pausar STT mientras habla el bot
+      console.log(`Interaction ${icount}: GPT -> TTS: ${gptReply.partialResponse}`.green);
+      ttsService.generate(gptReply, icount);
+    });
+
+    gptService.on('endofreply', (icount) => {
+      console.log(`Interaction ${icount}: GPT terminó de hablar`.dim);
+      transcriptionService.resume(); // ← Reanudar STT
+      marks = [];
+    });
+
 
   } catch (err) {
     console.error('Error crítico en WebSocket:', err);

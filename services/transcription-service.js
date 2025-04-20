@@ -15,84 +15,115 @@ class TranscriptionService extends EventEmitter {
   constructor() {
     super();
     const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
-
+    this.isPaused = false; // <-- Nuevo: permite pausar el STT
     this.dgConnection = deepgram.listen.live({
       encoding: 'mulaw',
-      sample_rate: '8000',
+      sample_rate: 8000,
       model: 'nova-2',
       punctuate: true,
       interim_results: true,
       endpointing: 150,
-      utterance_end_ms: 1000, // No podemos bajarlo más
+      utterance_end_ms: 1000,
       language: 'es'
     });
 
-    this.finalResult = '';
+    this.partialText = '';
     this.transcriptionTimeout = null;
 
     this.dgConnection.on(LiveTranscriptionEvents.Transcript, (event) => {
       try {
+        if (this.isPaused) return; // <-- NUEVO: Ignora eventos si está pausado
+
         const text = event.channel?.alternatives?.[0]?.transcript?.trim() || '';
         const isFinal = event.is_final === true;
         const isSpeechFinal = event.speech_final === true;
 
+        if (!text) return;
+
+        logger.debug(`Evento recibido (${isFinal ? 'FINAL' : 'interino'}): ${text}`);
+
         if (this.transcriptionTimeout) clearTimeout(this.transcriptionTimeout);
 
-        if (isFinal && text) {
-          this.finalResult += ` ${text}`;
-
-          if (isSpeechFinal) {
-            this.emit('transcription', this.finalResult.trim());
-            this.finalResult = '';
-          } else {
-            // Seguridad: no esperamos 3s, bajamos a 500ms
-            this.transcriptionTimeout = setTimeout(() => {
-              if (this.finalResult.trim()) {
-                logger.warn('Timeout rápido activado, enviando transcripción acumulada.');
-                this.emit('transcription', this.finalResult.trim());
-                this.finalResult = '';
-              }
-            }, 500);
-          }
-        } else if (text && pareceFraseCompleta(text)) {
-          logger.debug('Frase interina parece completa, se emite tempranamente.');
+        if (isFinal && isSpeechFinal) {
+          logger.info('Transcripción final confirmada.');
           this.emit('transcription', text);
-        } else if (text && !this.finalResult && isFinal === false) {
-          // Intento agresivo de emitir texto temprano sin esperar is_final
-          logger.debug('Emitiendo transcripción temprana con heurística de texto parcial.');
-          this.finalResult = text;
-          setTimeout(() => {
-            if (this.finalResult) {
-              this.emit('transcription', this.finalResult.trim());
-              this.finalResult = '';
-            }
-          }, 300); // tiempo muy corto para no bloquear el flujo
-        } else {
-          this.transcriptionTimeout = setTimeout(() => {
-            if (this.finalResult.trim()) {
-              logger.warn('Timeout rápido activado, enviando transcripción acumulada.');
-              this.emit('transcription', this.finalResult.trim());
-              this.finalResult = '';
-            }
-          }, 250);
+          this.partialText = '';
+          return;
         }
+
+        if (isFinal && !isSpeechFinal) {
+          logger.debug('Texto parcial final confirmado, esperando más...');
+          this.partialText += ' ' + text;
+          this.resetTimeout();
+          return;
+        }
+
+        if (!isFinal && pareceFraseCompleta(text)) {
+          logger.info('Frase interina parece completa, se emite tempranamente.');
+          this.emit('transcription', text);
+          this.partialText = '';
+          return;
+        }
+
+        if (!isFinal && !this.partialText) {
+          logger.debug('Texto parcial nuevo, iniciando acumulación temprana.');
+          this.partialText = text;
+          this.resetTimeout(300);
+        }
+
       } catch (err) {
         logger.error(`Error procesando transcripción: ${err.message}`);
       }
     });
+
+    this.dgConnection.on('error', (err) => {
+      logger.error(`Deepgram error: ${err.message}`);
+    });
   }
 
   send(payload) {
+    if (this.isPaused) return; // <-- NUEVO: No enviar audio si está pausado
     if (this.dgConnection.getReadyState() === 1) {
       this.dgConnection.send(Buffer.from(payload, 'base64'));
     }
   }
+
+  pause() {
+    logger.info('🛑 Pausando transcripción');
+    this.isPaused = true;
+  }
+
+  resume() {
+    logger.info('▶️ Reanudando transcripción');
+    this.isPaused = false;
+  }
+
+  resetTimeout(ms = 500) {
+    if (this.transcriptionTimeout) clearTimeout(this.transcriptionTimeout);
+
+    this.transcriptionTimeout = setTimeout(() => {
+      if (this.partialText?.trim()) {
+        logger.warn(`Timeout (${ms}ms) activado, emitiendo acumulado: "${this.partialText.trim()}"`);
+        this.emit('transcription', this.partialText.trim());
+        this.partialText = '';
+      }
+    }, ms);
+  }
+
+  finish() {
+    if (this.dgConnection) {
+      this.dgConnection.finish();
+    }
+  }
 }
 
-// Heurística básica para detectar si una frase interina ya es válida
+// Heurística para detectar frases completas sin puntuación final explícita
 function pareceFraseCompleta(text) {
-  return text.length > 10 && /[.?!,;:]$/.test(text.trim());
+  const trimmed = text.trim();
+  return trimmed.length > 10 && (
+    /[.?!,;:]$/.test(trimmed) ||
+    (trimmed.split(' ').length >= 6 && /^[A-ZÁÉÍÓÚÜÑ]/.test(trimmed))
+  );
 }
-
 
 module.exports = { TranscriptionService };
